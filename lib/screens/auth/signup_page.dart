@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'login_page.dart';
 import '../navbar/main_page.dart';
+import 'package:first_app/services/user_database_service.dart';
+
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -54,6 +56,9 @@ class _SignupPageState extends State<SignupPage> {
         await FirebaseAuth.instance.currentUser!
             .updateDisplayName(nameController.text.trim());
       }
+
+       final userService = UserDatabaseService();
+       await userService.initializeUserData();
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Account created successfully!')),

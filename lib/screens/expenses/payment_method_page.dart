@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class PaymentMethodPage extends StatefulWidget {
   const PaymentMethodPage({super.key});
@@ -11,17 +13,63 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
   final TextEditingController _newMethodController = TextEditingController();
   bool _showPopup = false;
 
-  final paymentMethods = [
-    'Cash',
-    'UPI',
-    'Credit Card',
-    'Debit Card',
-    'Net Banking',
-    'Wallet',
-    'Cheque',
-    'Others',
-    '+',
-  ];
+  List<Map<String, String>> allMethods = [];
+  List<Map<String, String>> globalMethods = [];
+
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPaymentMethods();
+  }
+
+  /// 🔹 Load both global and user-specific payment methods
+  Future<void> _loadPaymentMethods() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // Fetch global methods
+    final globalSnapshot = await _firestore.collection('payment_methods').get();
+    final globalList = globalSnapshot.docs.map((doc) {
+      return {'id': doc.id, 'name': doc['name'] as String};
+    }).toList();
+
+    // Fetch user-added methods
+    final userSnapshot = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('paymentMethods')
+        .get();
+    final userList = userSnapshot.docs.map((doc) {
+      return {'id': doc.id, 'name': doc['name'] as String};
+    }).toList();
+
+    setState(() {
+      globalMethods = globalList;
+      allMethods = [...globalList, ...userList, {'id': 'add', 'name': '+'}];
+    });
+  }
+
+  /// 🔹 Add new method and return ID + name
+  Future<Map<String, String>> _addPaymentMethod(String name) async {
+    final user = _auth.currentUser;
+    if (user == null) return {};
+
+    final methodRef = _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('paymentMethods')
+        .doc();
+
+    await methodRef.set({
+      'name': name,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    return {'id': methodRef.id, 'name': name};
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,25 +94,29 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
       ),
       body: Stack(
         children: [
-          // 🔹 Grid Background
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 18,
-                mainAxisSpacing: 18,
-                childAspectRatio: 1.2,
-              ),
-              itemCount: paymentMethods.length,
-              itemBuilder: (context, index) {
-                final method = paymentMethods[index];
-                return _buildPaymentCard(context, method);
-              },
-            ),
+            child: allMethods.isEmpty
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF58CC02)),
+                  )
+                : GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 18,
+                      mainAxisSpacing: 18,
+                      childAspectRatio: 1.2,
+                    ),
+                    itemCount: allMethods.length,
+                    itemBuilder: (context, index) {
+                      final method = allMethods[index];
+                      return _buildPaymentCard(context, method);
+                    },
+                  ),
           ),
 
-          // 🔹 Grey overlay with white popup
+          // 🔹 Popup Overlay
           if (_showPopup)
             Container(
               color: Colors.black.withOpacity(0.5),
@@ -96,32 +148,16 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
                         decoration: InputDecoration(
                           hintText: 'Enter Name',
                           hintStyle: const TextStyle(
-                            color: Colors.black,
+                            color: Colors.black54,
                             fontSize: 15,
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 14),
                           filled: true,
-                          fillColor: Colors.grey.shade300,
+                          fillColor: Colors.grey.shade200,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                                color: Color(0xFFE0E0E0), width: 1.2),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                                color: Color(0xFFE0E0E0), width: 1.2),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                                color: Color(0xFFBDBDBD), width: 1.4),
-                          ),
-                        ),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Colors.black87,
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -151,15 +187,19 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
                               ),
                               elevation: 0,
                             ),
-                            onPressed: () {
+                            onPressed: () async {
                               final name = _newMethodController.text.trim();
                               if (name.isNotEmpty) {
+                                final newMethod =
+                                    await _addPaymentMethod(name);
                                 setState(() {
-                                  paymentMethods.insert(
-                                      paymentMethods.length - 1, name);
+                                  allMethods.insert(
+                                      allMethods.length - 1, newMethod);
                                   _showPopup = false;
                                   _newMethodController.clear();
                                 });
+
+                                Navigator.pop(context, newMethod);
                               }
                             },
                             child: const Text(
@@ -182,8 +222,8 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
     );
   }
 
-  Widget _buildPaymentCard(BuildContext context, String method) {
-    final bool isAddButton = method == '+';
+  Widget _buildPaymentCard(BuildContext context, Map<String, String> method) {
+    final bool isAddButton = method['name'] == '+';
     return GestureDetector(
       onTap: () {
         if (isAddButton) {
@@ -196,7 +236,8 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isAddButton ? const Color(0xFF58CC02) : const Color(0xFFF4F4F4),
+          color:
+              isAddButton ? const Color(0xFF58CC02) : const Color(0xFFF4F4F4),
           borderRadius: BorderRadius.circular(25),
           boxShadow: [
             BoxShadow(
@@ -209,7 +250,7 @@ class _PaymentMethodPageState extends State<PaymentMethodPage> {
         ),
         child: Center(
           child: Text(
-            method,
+            method['name'] ?? '',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isAddButton ? Colors.white : Colors.black87,

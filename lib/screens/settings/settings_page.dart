@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'profile_page.dart';
 import 'preferences_page.dart';
 import 'notifications_page.dart';
 import 'privacy_settings_page.dart';
+import '../auth/login_page.dart'; 
 
 void main() => runApp(const SettingsDemoApp());
 
@@ -81,6 +83,22 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _signOut(BuildContext context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+
+      // After signing out, navigate to LoginPage and clear previous routes
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (Route<dynamic> route) => false,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error signing out: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -152,7 +170,7 @@ class SettingsPage extends StatelessWidget {
               ),
             ]),
 
-            // 🟩 Support Section
+            // Support Section
             sectionHeader('Support'),
             singleCard([
               item('Feedback'),
@@ -160,7 +178,7 @@ class SettingsPage extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // 🔵 Sign Out Button
+            // Sign Out Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: SizedBox(
@@ -173,7 +191,7 @@ class SettingsPage extends StatelessWidget {
                     ),
                     backgroundColor: Colors.white,
                   ),
-                  onPressed: () {},
+                  onPressed: () => _signOut(context),
                   child: const Text(
                     'SIGN OUT',
                     style: TextStyle(
@@ -187,7 +205,7 @@ class SettingsPage extends StatelessWidget {
 
             const SizedBox(height: 32),
 
-            // ⚪ Terms and Privacy Links
+            // Terms and Privacy Links
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(

@@ -1,7 +1,10 @@
-import 'package:first_app/screens/expenses/payment_mode_Page.dart';
+import 'package:first_app/screens/expenses/payment_method_page.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'category_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:first_app/services/expense_controller.dart';
+import 'subcategory_page.dart';
 
 class AddExpensePage extends StatefulWidget {
   const AddExpensePage({super.key});
@@ -17,9 +20,17 @@ class _AddExpensePageState extends State<AddExpensePage> {
   final dateController = TextEditingController();
   final timeController = TextEditingController();
 
-  String selectedCategory = "Select Category";
-  String selectedSubcategory = "Select Subcategory";
-  String selectedPaymentMode = "Select Payment Mode";
+  String? selectedCategoryId;
+  String selectedCategoryName = "Select Category";
+
+  String? selectedSubcategoryId;
+  String selectedSubcategoryName = "Select Subcategory";
+
+  String? selectedPaymentModeId;
+  String selectedPaymentModeName = "Select Payment Mode";
+
+  late ExpenseController _controller;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -27,6 +38,8 @@ class _AddExpensePageState extends State<AddExpensePage> {
     final now = DateTime.now();
     dateController.text = DateFormat('yyyy-MM-dd').format(now);
     timeController.text = DateFormat('hh:mm a').format(now);
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    _controller = ExpenseController(uid: uid);
   }
 
   Future<void> _selectDate() async {
@@ -58,6 +71,47 @@ class _AddExpensePageState extends State<AddExpensePage> {
     }
   }
 
+  Future<void> _onSave() async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User not signed in')));
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final categoryObj = (selectedCategoryId != null && selectedCategoryId!.isNotEmpty)
+          ? {'id': selectedCategoryId, 'name': selectedCategoryName}
+          : (selectedCategoryName != "Select Category" ? selectedCategoryName : null);
+
+      final paymentObj = (selectedPaymentModeId != null && selectedPaymentModeId!.isNotEmpty)
+          ? {'id': selectedPaymentModeId, 'name': selectedPaymentModeName}
+          : (selectedPaymentModeName != "Select Payment Mode" ? selectedPaymentModeName : null);
+
+      final docRef = await _controller.saveExpense(
+        amountText: amountController.text,
+        dateText: dateController.text,
+        timeText: timeController.text,
+        isExpense: isExpense,
+        category: categoryObj,
+        subcategory: (selectedSubcategoryId != null && selectedSubcategoryId!.isNotEmpty)
+            ? {'id': selectedSubcategoryId, 'name': selectedSubcategoryName}
+            : (selectedSubcategoryName != "Select Subcategory" ? selectedSubcategoryName : null),
+        paymentMode: paymentObj,
+        notes: null,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Expense saved')));
+      Navigator.of(context).pop(docRef.id);
+    } on ArgumentError catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const fieldColor = Color(0xFFF9F9F9);
@@ -86,7 +140,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
           children: [
             const SizedBox(height: 20),
 
-            // 🔹 Expense / Income Toggle
+            // Expense / Income Toggle
             Container(
               decoration: BoxDecoration(
                 color: fieldColor,
@@ -103,9 +157,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                         duration: const Duration(milliseconds: 250),
                         height: 46,
                         decoration: BoxDecoration(
-                          color: isExpense
-                              ? const Color(0xFF1CB0F6)
-                              : Colors.grey[300],
+                          color: isExpense ? const Color(0xFF1CB0F6) : Colors.grey[300],
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Center(
@@ -128,9 +180,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                         duration: const Duration(milliseconds: 250),
                         height: 46,
                         decoration: BoxDecoration(
-                          color: !isExpense
-                              ? const Color(0xFF1CB0F6)
-                              : Colors.grey[300],
+                          color: !isExpense ? const Color(0xFF1CB0F6) : Colors.grey[300],
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Center(
@@ -151,7 +201,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
 
             const SizedBox(height: 30),
 
-            // 🔹 Date & Time
+            // Date & Time
             Row(
               children: [
                 Expanded(
@@ -160,8 +210,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                     dateController,
                     readOnly: true,
                     onTap: _selectDate,
-                    prefixIcon: const Icon(Icons.calendar_today_outlined,
-                        color: Colors.grey, size: 20),
+                    prefixIcon: const Icon(Icons.calendar_today_outlined, color: Colors.grey, size: 20),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -171,8 +220,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                     timeController,
                     readOnly: true,
                     onTap: _selectTime,
-                    prefixIcon: const Icon(Icons.access_time_outlined,
-                        color: Colors.grey, size: 20),
+                    prefixIcon: const Icon(Icons.access_time_outlined, color: Colors.grey, size: 20),
                   ),
                 ),
               ],
@@ -180,93 +228,117 @@ class _AddExpensePageState extends State<AddExpensePage> {
 
             const SizedBox(height: 20),
 
-            // 🔹 Amount
+            // Amount
             buildTextField(
               "Amount",
               amountController,
               keyboard: TextInputType.number,
-              prefixIcon: const Icon(
-                Icons.currency_rupee,
-                color: Colors.grey,
-                size: 20,
-              ),
+              prefixIcon: const Icon(Icons.currency_rupee, color: Colors.grey, size: 20),
             ),
 
             const SizedBox(height: 20),
 
-            // 🔹 Category Selector Row
+            // Category Selector
             buildSelectableRow(
               label: "Category",
-              value: selectedCategory,
+              value: selectedCategoryName,
               onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const CategoryPage()),
-              );
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CategoryPage()),
+                );
 
-              if (result != null && result is String) {
-                setState(() {
-                  selectedCategory = result;
-                });
-              }
-            },
-            ),
-
-            const SizedBox(height: 20),
-
-            // 🔹 Subcategory Selector Row
-            buildSelectableRow(
-              label: "Subcategory (optional)",
-              value: selectedSubcategory,
-              onTap: () {
-                // TODO: Navigate to subcategory page
+                if (result != null && result is Map) {
+                  setState(() {
+                    selectedCategoryId = result['id'];
+                    selectedCategoryName = result['name'];
+                    selectedSubcategoryId = null;
+                    selectedSubcategoryName = "Select Subcategory";
+                  });
+                }
               },
             ),
 
             const SizedBox(height: 20),
 
-            // 🔹 Payment Mode Selector Row
+            // Subcategory Selector — always allowed
             buildSelectableRow(
-              label: "Payment Mode",
-              value: selectedPaymentMode,
+              label: "Subcategory (optional)",
+              value: selectedSubcategoryName,
               onTap: () async {
+                if (selectedCategoryId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Please select a category first.")),
+                  );
+                  return;
+                }
+
+                final subcategoryResult = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SubcategoryPage(
+                      categoryId: selectedCategoryId!,
+                      categoryName: selectedCategoryName,
+                    ),
+                  ),
+                );
+
+                if (subcategoryResult != null && subcategoryResult is Map) {
+                  setState(() {
+                    selectedSubcategoryId = subcategoryResult['id'];
+                    selectedSubcategoryName = subcategoryResult['name'];
+                  });
+                }
+              },
+            ),
+
+            const SizedBox(height: 20),
+
+            // Payment Mode Selector
+            buildSelectableRow(
+            label: "Payment Mode",
+            value: selectedPaymentModeName,
+            onTap: () async {
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const PaymentMethodPage()),
               );
 
-              if (result != null && result is String) {
+              if (result != null && result is Map<String, String>) {
                 setState(() {
-                  selectedPaymentMode = result;
+                  selectedPaymentModeId = result['id'];
+                  selectedPaymentModeName = result['name']!;
                 });
               }
             },
-            ),
+          ),
 
             const SizedBox(height: 30),
 
-            // 🔹 Continue Button
+            // Continue Button
             SizedBox(
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                onPressed: () {},
+                onPressed: _onSave,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF58CC02), // Duolingo green
+                  backgroundColor: const Color(0xFF58CC02),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  "SAVE",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: 0.5,
-                  ),
-                ),
+                child: _saving
+                    ? const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
+                    : const Text(
+                        "SAVE",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
               ),
             ),
 
@@ -277,7 +349,6 @@ class _AddExpensePageState extends State<AddExpensePage> {
     );
   }
 
-  /// 🔹 Duolingo-style TextField builder
   Widget buildTextField(
     String label,
     TextEditingController controller, {
@@ -290,14 +361,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-            color: Colors.black87,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.black87)),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
@@ -307,36 +371,19 @@ class _AddExpensePageState extends State<AddExpensePage> {
           onTap: onTap,
           decoration: InputDecoration(
             prefixIcon: prefixIcon,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             filled: true,
             fillColor: const Color(0xFFF9F9F9),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFE0E0E0), width: 1.2),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.2),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFE0E0E0), width: 1.2),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-                  const BorderSide(color: Color(0xFFBDBDBD), width: 1.4),
-            ),
-          ),
-          style: const TextStyle(
-            fontSize: 15,
-            color: Colors.black87,
           ),
         ),
       ],
     );
   }
 
-  /// 🔹 Custom Row for tappable fields (Category / Payment / Subcategory)
   Widget buildSelectableRow({
     required String label,
     required String value,
@@ -345,14 +392,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-            color: Colors.black87,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Colors.black87)),
         const SizedBox(height: 6),
         InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -366,16 +406,9 @@ class _AddExpensePageState extends State<AddExpensePage> {
             ),
             child: Row(
               children: [
-                // Icon(icon, color: Colors.grey, size: 20),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      color: Colors.black87,
-                    ),
-                  ),
+                  child: Text(value, style: const TextStyle(fontSize: 15, color: Colors.black87)),
                 ),
                 const Icon(Icons.chevron_right, color: Colors.black45),
               ],
