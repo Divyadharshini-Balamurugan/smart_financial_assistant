@@ -21,7 +21,6 @@ class UserDatabaseService {
       // Core authentication info
       'email': user.email,
       'displayName': user.displayName ?? '',
-      'role': 'user',
       'createdAt': now,
       'updatedAt': now,
 

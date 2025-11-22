@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '/services/suggestion_service.dart';
 
 class SuggestionsSection extends StatefulWidget {
   const SuggestionsSection({super.key});
@@ -9,26 +10,38 @@ class SuggestionsSection extends StatefulWidget {
 }
 
 class _SuggestionsSectionState extends State<SuggestionsSection> {
-  final List<String> _advices = [
-    "Save at least 10% of your income every month.",
-    "Track your daily expenses to find hidden spending habits.",
-    "Invest early to benefit from compound interest.",
-    "Set small weekly financial goals to stay motivated.",
-  ];
-
+  List<String> _advices = [];
   int _currentIndex = 0;
   Timer? _timer;
 
+  final SuggestionService _suggestionService = SuggestionService();
+
   @override
-  void initState() {
-    super.initState();
-    // Auto slide every 30 seconds
-    _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
+void initState() {
+  super.initState();
+  _advices = []; // show loader while checking
+  _initSuggestions();
+}
+
+Future<void> _initSuggestions() async {
+  // 1) read cache or generate (this method returns stored instantly if exists)
+  final suggestions = await _suggestionService.fetchOrGenerate();
+  setState(() {
+    _advices = suggestions.isNotEmpty
+        ? suggestions
+        : ['No suggestions available. Update profile or expenses.'];
+  });
+
+  // 2) start timer after advices loaded
+  _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    if (_advices.isNotEmpty) {
       setState(() {
         _currentIndex = (_currentIndex + 1) % _advices.length;
       });
-    });
-  }
+    }
+  });
+}
+
 
   @override
   void dispose() {
@@ -44,8 +57,7 @@ class _SuggestionsSectionState extends State<SuggestionsSection> {
 
   void _prevAdvice() {
     setState(() {
-      _currentIndex =
-          (_currentIndex - 1 + _advices.length) % _advices.length;
+      _currentIndex = (_currentIndex - 1 + _advices.length) % _advices.length;
     });
   }
 
@@ -56,7 +68,6 @@ class _SuggestionsSectionState extends State<SuggestionsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🔹 Section Title
           const Padding(
             padding: EdgeInsets.only(bottom: 8),
             child: Text(
@@ -69,58 +80,56 @@ class _SuggestionsSectionState extends State<SuggestionsSection> {
             ),
           ),
 
-          // 🔹 Advice Card
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: const Color(0xFF4C338E), // 🟣 subtle purple border
-                width: 0.8, // very thin border
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                // ◀️ Previous
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                      color: Colors.grey),
-                  onPressed: _prevAdvice,
-                ),
+          if (_advices.isEmpty)
+            const Center(child: CircularProgressIndicator()),
 
-                // 🧠 Advice Text
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      _advices[_currentIndex],
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                        height: 1.4,
+          if (_advices.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 30),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Color(0xFF4C338E),
+                  width: 0.8,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                        color: Colors.grey),
+                    onPressed: _prevAdvice,
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        _advices[_currentIndex],
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                          height: 1.4,
+                        ),
                       ),
                     ),
                   ),
-                ),
-
-                // ▶️ Next
-                IconButton(
-                  icon: const Icon(Icons.arrow_forward_ios_rounded,
-                      color: Colors.grey),
-                  onPressed: _nextAdvice,
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_ios_rounded,
+                        color: Colors.grey),
+                    onPressed: _nextAdvice,
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

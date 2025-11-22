@@ -8,7 +8,7 @@ class ExpenseController {
 
   ExpenseController({required this.uid});
 
-  /// Validates & saves expense. Returns created DocumentReference on success.
+  /// Validates & saves expense/income. Returns created DocumentReference on success.
   /// category can be either a String (name) or a Map {'id': '...', 'name': '...'}
   /// same for paymentMode.
   Future<DocumentReference> saveExpense({
@@ -66,11 +66,13 @@ class ExpenseController {
     }
 
     String? subcategoryId;
+    String? subcategoryName;
     if (subcategory != null) {
       if (subcategory is String) {
-        // we only got name — store it as name in notes or keep as null id
+        subcategoryName = subcategory;
       } else if (subcategory is Map) {
         subcategoryId = subcategory['id']?.toString();
+        subcategoryName = subcategory['name']?.toString();
       }
     }
 
@@ -85,19 +87,49 @@ class ExpenseController {
       }
     }
 
-    // call your Firestore helper (it converts to UTC keys internally)
-    final docRef = await addExpense(
-      uid: uid,
-      amount: amount,
-      categoryId: categoryId ?? '',
-      categoryName: categoryName,
-      subcategoryId: subcategoryId,
-      paymentModeId: paymentModeId,
-      date: localDt, // local DateTime; your helper converts to UTC keys
-      currency: currency,
-      notes: notes,
-    );
+    // Build the payload common to both expense & income
+    final payload = {
+      'amount': amount,
+      'currency': currency,
+      'categoryId': categoryId ?? '',
+      'categoryName': categoryName ?? '',
+      'subcategoryId': subcategoryId ?? '',
+      'subcategoryName': subcategoryName ?? '',
+      'paymentModeId': paymentModeId ?? '',
+      'paymentModeName': paymentModeName ?? '',
+      'notes': notes ?? '',
+      'createdAt': DateTime.now().toUtc(),
+      'localDateTime': localDt.toIso8601String(), // keep local iso for UI if needed
+    };
 
-    return docRef;
+    // Branch: expense vs income
+    if (isExpense) {
+      final docRef = await addExpense(
+        uid: uid,
+        amount: amount,
+        categoryId: categoryId ?? '',
+        categoryName: categoryName,
+        subcategoryId: subcategoryId,
+        paymentModeId: paymentModeId,
+        date: localDt,
+        currency: currency,
+        notes: notes,
+      );
+      return docRef;
+    } else {
+      // Save to incomes subcollection
+      final docRef = await addIncome(
+        uid: uid,
+        amount: amount,
+        categoryId: categoryId ?? '',
+        categoryName: categoryName,
+        subcategoryId: subcategoryId,
+        paymentModeId: paymentModeId,
+        date: localDt,
+        currency: currency,
+        notes: notes,
+      );
+      return docRef;
+    }
   }
 }

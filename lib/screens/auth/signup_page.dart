@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'login_page.dart';
 import '../navbar/main_page.dart';
 import 'package:first_app/services/user_database_service.dart';
-
+import 'survey_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -67,7 +67,7 @@ class _SignupPageState extends State<SignupPage> {
       // Navigate to login or main page
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const MainPage()),
+        MaterialPageRoute(builder: (context) => const SurveyOnboardingExact()),
       );
     } on FirebaseAuthException catch (e) {
       String message = 'Signup failed';
@@ -91,6 +91,7 @@ class _SignupPageState extends State<SignupPage> {
       setState(() => isLoading = false);
     }
   }
+  
 
   String? _emailValidator(String? v) {
     final value = v?.trim() ?? '';
@@ -105,6 +106,7 @@ class _SignupPageState extends State<SignupPage> {
     if (value.length < 6) return 'Password must be at least 6 characters';
     return null;
   }
+  
 
   @override
   Widget build(BuildContext context) {

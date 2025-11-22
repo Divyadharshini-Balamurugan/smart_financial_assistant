@@ -20,7 +20,6 @@ class HeaderSection extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 🟣 LEFT SIDE — text info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,7 +72,6 @@ class HeaderSection extends StatelessWidget {
               ),
             ),
 
-            // 🟡 RIGHT SIDE — Treasure icon
             Container(
               height: 85,
               width: 85,

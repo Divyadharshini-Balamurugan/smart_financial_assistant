@@ -1,6 +1,6 @@
 // lib/firestore_helpers.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:firebase_auth/firebase_auth.dart';
 
 final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -44,7 +44,6 @@ Future<void> setupUserDatabase({
     'email': email ?? '',
     'displayName': displayName ?? null,
     'fullName': null,
-    'role': 'user',
     'settings': {
       'currency': 'INR',
       'timezone': 'Asia/Kolkata',
@@ -136,4 +135,45 @@ Future<void> deleteExpense({
   required String expenseId,
 }) async {
   await _db.collection('users').doc(uid).collection('expenses').doc(expenseId).delete();
+}
+
+
+/// Example: addExpense already exists in your codebase.
+/// Below is addIncome — mirror of addExpense but stores in incomes subcollection.
+/// Adjust field names to match your existing schema.
+Future<DocumentReference> addIncome({
+  required String uid,
+  required double amount,
+  required String categoryId,
+  String? categoryName,
+  String? subcategoryId,
+  String? paymentModeId,
+  required DateTime date,
+  String currency = 'INR',
+  String? notes,
+}) async {
+  // Use the provided date (local) converted to UTC for key generation
+  final d = date.toUtc();
+  final keys = buildKeysUtc(d);
+
+  final payload = {
+    'amount': amount,
+    'currency': currency,
+    'categoryId': categoryId,
+    'categoryName': categoryName ?? '',
+    'subcategoryId': subcategoryId ?? '',
+    'paymentModeId': paymentModeId ?? '',
+    'notes': notes ?? '',
+    // Keep timestamp / createdAt consistent with addExpense:
+    'timestamp': FieldValue.serverTimestamp(),
+    'dateKey': keys['dateKey'],
+    'monthKey': keys['monthKey'],
+    'weekKey': keys['weekKey'],
+    'yearKey': keys['yearKey'],
+    'createdAt': FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+
+  final ref = await _db.collection('users').doc(uid).collection('incomes').add(payload);
+  return ref;
 }
