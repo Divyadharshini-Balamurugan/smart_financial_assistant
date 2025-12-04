@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:first_app/services/goal_savings_service.dart';
+
 
 class GoalManagerSection extends StatelessWidget {
-  const GoalManagerSection({super.key});
+  final List<GoalModel>? goals;
+
+  const GoalManagerSection({super.key, this.goals});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 🔹 Header Row (Title only, no timer here)
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
           child: Text(
@@ -22,7 +25,6 @@ class GoalManagerSection extends StatelessWidget {
 
         const SizedBox(height: 10),
 
-        // 🔸 White Card Container (like Duolingo's “Daily Quests”)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
@@ -30,43 +32,80 @@ class GoalManagerSection extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: const Color(0xFF4C338E), // subtle purple border
+                color: Color(0xFF4C338E),
                 width: 0.6,
               ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.grey.withOpacity(0.08),
                   blurRadius: 8,
-                  offset: const Offset(0, 3),
+                  offset: Offset(0, 3),
                 ),
               ],
             ),
             padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _goalItem("Save for Home", 20000, 8500),
-                const SizedBox(height: 14),
-                _goalItem("Buy a Car", 10000, 4000),
-                const SizedBox(height: 14),
-                _goalItem("Vacation Fund", 5000, 2500),
-              ],
-            ),
+
+            child: (goals == null || goals!.isEmpty)
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      "No goals yet. Add your first goal!",
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                  )
+                : Column(
+                    children: goals!.map((g) {
+                      // Calculate total saved including contributions
+                      double saved = g.initialAmount +
+                          g.contributions.fold(
+                              0, (sum, c) => sum + c.amount);
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: _goalItem(
+                          g.goalName,
+                          g.targetAmount,
+                          saved,
+                          g.targetDate,
+                        ),
+                      );
+                    }).toList(),
+                  ),
           ),
         ),
       ],
     );
   }
 
-  // Single Goal Item (Styled like Duolingo’s Quest Row)
-  static Widget _goalItem(String goal, double target, double saved) {
+  static Widget _goalItem(
+      String goal, double target, double saved, DateTime targetDate) {
     double progress = saved / target;
     progress = progress.clamp(0.0, 1.0);
+
+    int remainingDays = targetDate.difference(DateTime.now()).inDays;
+    String dayLabel;
+
+    if (saved >= target) {
+      dayLabel = "COMPLETED";
+    } else if (remainingDays > 1) {
+      dayLabel = "$remainingDays DAYS LEFT";
+    } else if (remainingDays == 1) {
+      dayLabel = "1 DAY LEFT";
+    } else if (remainingDays == 0) {
+      dayLabel = "TODAY";
+    } else {
+      dayLabel = "EXPIRED";
+    }
+
+    final dayColor = (saved >= target)
+        ? Colors.green
+        : (remainingDays < 0)
+            ? Colors.red
+            : Colors.orange;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 🔸 Title Row with Timer on Right
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -78,13 +117,13 @@ class GoalManagerSection extends StatelessWidget {
               ),
             ),
             Row(
-              children: const [
-                Icon(Icons.timer_outlined, color: Colors.orange, size: 16),
-                SizedBox(width: 4),
+              children: [
+                Icon(Icons.timer_outlined, color: dayColor, size: 16),
+                const SizedBox(width: 4),
                 Text(
-                  "5 DAYS",
+                  dayLabel,
                   style: TextStyle(
-                    color: Colors.orange,
+                    color: dayColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                   ),
@@ -96,17 +135,15 @@ class GoalManagerSection extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // 🔹 Progress Bar + Treasure Fixed at Bar End
         LayoutBuilder(
           builder: (context, constraints) {
             final double fullWidth = constraints.maxWidth;
-            final double barHeight = 20;
-            final double barRadius = 12;
+            const double barHeight = 20;
+            const double barRadius = 12;
 
             return Stack(
               alignment: Alignment.centerLeft,
               children: [
-                // Background bar
                 Container(
                   height: barHeight,
                   width: fullWidth,
@@ -115,8 +152,6 @@ class GoalManagerSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(barRadius),
                   ),
                 ),
-
-                // Green filled progress
                 Container(
                   height: barHeight,
                   width: fullWidth * progress,
@@ -125,10 +160,8 @@ class GoalManagerSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(barRadius),
                   ),
                 ),
-
-                // Treasure icon FIXED at the end of the background bar
                 Positioned(
-                  right: -6, // slight overlap for realistic look
+                  right: -6,
                   child: Image.asset(
                     "asset/images/treasure.png",
                     height: 42,
@@ -143,7 +176,6 @@ class GoalManagerSection extends StatelessWidget {
 
         const SizedBox(height: 8),
 
-        // 🔹 Progress text below bar
         Text(
           "${saved.toInt()} / ${target.toInt()} saved",
           style: const TextStyle(

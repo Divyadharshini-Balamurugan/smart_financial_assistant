@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:first_app/services/budget_alert_service.dart';
 
 class RemindersSection extends StatefulWidget {
   const RemindersSection({super.key});
@@ -9,7 +11,7 @@ class RemindersSection extends StatefulWidget {
 }
 
 class _RemindersSectionState extends State<RemindersSection> {
-  final List<Map<String, String>> _reminders = [
+  final List<Map<String, String>> _staticReminders = [
     {
       "title": "Pay Credit Card Bill",
       "desc": "Your payment is due in 2 days. Avoid late fees!"
@@ -24,13 +26,18 @@ class _RemindersSectionState extends State<RemindersSection> {
     },
   ];
 
+  final BudgetAlertService _budgetService = BudgetAlertService();
+  List<Map<String, String>> _reminders = [];
   int _currentIndex = 0;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    // Auto-slide every 30 seconds
+    _reminders = [..._staticReminders]; // start with static ones
+    _loadBudgetAlerts();
+
+    // Auto-slide every 120 seconds
     _timer = Timer.periodic(const Duration(seconds: 120), (timer) {
       setState(() {
         _currentIndex = (_currentIndex + 1) % _reminders.length;
@@ -57,8 +64,48 @@ class _RemindersSectionState extends State<RemindersSection> {
     });
   }
 
+  // 🔹 Fetch budget alerts and append those that exceed thresholds
+  Future<void> _loadBudgetAlerts() async {
+  final userAlerts = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(_budgetService.uid!)
+      .collection('budget_alert')
+      .get();
+
+
+    final List<Map<String, String>> alertsToShow = [];
+
+    for (final doc in userAlerts.docs) {
+      final alertData = doc.data();
+      final spentResult = await _budgetService.calculateSpentForAlert(
+        alertId: doc.id,
+        period: alertData['frequency'] ?? 'Month',
+      );
+
+      final double totalSpent = spentResult['total'] ?? 0.0;
+      final double limit = spentResult['limit'] ?? 0.0;
+
+      // Add to reminders if spent >= 70% of limit
+      if (totalSpent >= 0.7 * limit) {
+        final status = totalSpent >= limit ? "❗ Over Budget!" : "⚠️ Approaching Limit";
+        alertsToShow.add({
+          "title": "${alertData['categoryName']} $status",
+          "desc": "Spent \$${totalSpent.toStringAsFixed(2)} of \$${limit.toStringAsFixed(2)}"
+        });
+      }
+    }
+
+    if (alertsToShow.isNotEmpty) {
+      setState(() {
+        _reminders = [..._staticReminders, ...alertsToShow];
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_reminders.isEmpty) return const SizedBox();
+
     final reminder = _reminders[_currentIndex];
 
     return Padding(
@@ -77,15 +124,13 @@ class _RemindersSectionState extends State<RemindersSection> {
               ),
             ),
           ),
-
-          // 🔹 Reminder Card
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: const Color(0xFF4C338E), // 🟣 subtle purple border
+                color: const Color(0xFF4C338E),
                 width: 0.8,
               ),
               boxShadow: [
@@ -99,14 +144,11 @@ class _RemindersSectionState extends State<RemindersSection> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ◀️ Previous
                 IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new_rounded,
                       color: Colors.grey),
                   onPressed: _prevReminder,
                 ),
-
-                // 🧾 Reminder Text
                 Flexible(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -131,8 +173,6 @@ class _RemindersSectionState extends State<RemindersSection> {
                         ),
                       ),
                       const SizedBox(height: 16),
-
-                      // ✅ Only Snooze + Done buttons (no Dismiss)
                       Wrap(
                         spacing: 8,
                         runSpacing: 6,
@@ -145,8 +185,6 @@ class _RemindersSectionState extends State<RemindersSection> {
                     ],
                   ),
                 ),
-
-                // ▶️ Next
                 IconButton(
                   icon: const Icon(Icons.arrow_forward_ios_rounded,
                       color: Colors.grey),
@@ -160,7 +198,6 @@ class _RemindersSectionState extends State<RemindersSection> {
     );
   }
 
-  // 🔸 Slim Chip Buttons
   Widget _actionChip(String label, Color color) {
     return InkWell(
       onTap: () {},

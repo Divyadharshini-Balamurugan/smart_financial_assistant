@@ -137,7 +137,6 @@ Future<void> deleteExpense({
   await _db.collection('users').doc(uid).collection('expenses').doc(expenseId).delete();
 }
 
-
 /// Example: addExpense already exists in your codebase.
 /// Below is addIncome — mirror of addExpense but stores in incomes subcollection.
 /// Adjust field names to match your existing schema.
@@ -177,3 +176,4 @@ Future<DocumentReference> addIncome({
   final ref = await _db.collection('users').doc(uid).collection('incomes').add(payload);
   return ref;
 }
+

@@ -18,9 +18,9 @@ class _MainPageState extends State<MainPage> {
 
   // 🧭 Page List in Order
   final List<Widget> _pages = [
-    const HomePage(),
+    HomePage(),
     const AnalyticsPage(),
-    const AddGoalPage(),
+    const GoalPage(),
     const SettingsPage(),
   ];
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
+import 'package:first_app/services/pdf_export_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 class ExportDataSection extends StatefulWidget {
   const ExportDataSection({super.key});
 
@@ -155,32 +156,64 @@ class _ExportDataSectionState extends State<ExportDataSection> {
                       ),
                       elevation: 2,
                     ),
-                    onPressed: () {
-                      if (_fromDate == null || _toDate == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Please select both From and To dates."),
-                          ),
-                        );
-                        return;
-                      }
+                  onPressed: () async {
+  if (_fromDate == null || _toDate == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please select both From and To dates.")),
+    );
+    return;
+  }
+  if (_toDate!.isBefore(_fromDate!)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("To Date cannot be before From Date.")),
+    );
+    return;
+  }
 
-                      if (_toDate!.isBefore(_fromDate!)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("To Date cannot be before From Date."),
-                          ),
-                        );
-                        return;
-                      }
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("You must be signed in to export the report.")),
+    );
+    return;
+  }
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                              "Generating report from ${_fromDateController.text} to ${_toDateController.text}..."),
-                        ),
-                      );
-                    },
+  final service = PdfExportService();
+
+  final snack = ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Generating report...'), duration: Duration(days: 1)),
+  );
+
+  try {
+    final savedPath = await service.createUserReportAndSave(
+      uid: user.uid,
+      from: _fromDate!,
+      to: _toDate!,
+      // username: 'Optional Name', // if you already have the user's name locally you can pass it here
+      filenamePrefix: 'budget_report',
+    );
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    if (savedPath == 'shared') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Share sheet opened — save the PDF to Files/Downloads.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved to: $savedPath')),
+      );
+      await service.openFile(savedPath);
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error generating or saving PDF: $e')),
+    );
+  }
+},
+
+
                   ),
                 ),
               ],

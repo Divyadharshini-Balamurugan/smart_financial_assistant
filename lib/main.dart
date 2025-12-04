@@ -5,6 +5,8 @@ import 'screens/splash_screen.dart';
 
 // IMPORT YOUR FILE HERE
 // import 'services/upload_career_rules_from_string.dart';
+// import 'services/income_category.dart';
+// import 'services/goal_savings_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +16,8 @@ void main() async {
   );
 
   // // CALL THE FUNCTION
-  // await uploadCareerRulesFromString();
+  // await initializeGoalCategories();
+
 
   runApp(const MyApp());
 }

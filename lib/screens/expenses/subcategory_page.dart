@@ -5,11 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 class SubcategoryPage extends StatefulWidget {
   final String categoryId;
   final String categoryName;
+  final bool forIncome;
 
   const SubcategoryPage({
     super.key,
     required this.categoryId,
     required this.categoryName,
+    this.forIncome = false,
   });
 
   @override
@@ -27,17 +29,6 @@ class _SubcategoryPageState extends State<SubcategoryPage> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _subcategories = [];
 
-  bool get isGlobalCategory {
-    // Check if ID starts with 'C' and number 1..13
-    try {
-      if (!widget.categoryId.startsWith('C')) return false;
-      final numPart = int.tryParse(widget.categoryId.substring(1)) ?? 0;
-      return numPart >= 1 && numPart <= 13;
-    } catch (_) {
-      return false;
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -48,57 +39,69 @@ class _SubcategoryPageState extends State<SubcategoryPage> {
     setState(() => _isLoading = true);
 
     try {
-      if (isGlobalCategory) {
-        // Load from global categories collection
-        final doc = await _firestore
-            .collection('categories')
+      final parentCollection =
+          widget.forIncome ? 'income_categories' : 'categories';
+      final user = _auth.currentUser;
+
+      List<Map<String, dynamic>> globalSubs = [];
+      List<Map<String, dynamic>> userSubs = [];
+
+      // 🔹 1) Load from GLOBAL collection (categories / income_categories)
+      final globalDoc = await _firestore
+          .collection(parentCollection)
+          .doc(widget.categoryId)
+          .get();
+
+      if (globalDoc.exists) {
+        final data = globalDoc.data();
+        final List subs =
+            (data != null && data['subcategories'] is List) ? data['subcategories'] : [];
+        globalSubs = subs.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      // 🔹 2) Load from USER collection (users/{uid}/categories or income_categories)
+      if (user != null) {
+        final userDoc = await _firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection(parentCollection)
             .doc(widget.categoryId)
             .get();
-        if (!doc.exists) {
-          _subcategories = [];
-        } else {
-          final data = doc.data();
-          final List subs = (data != null && data['subcategories'] != null)
-              ? data['subcategories']
-              : [];
-          _subcategories =
-              subs.map((e) => Map<String, dynamic>.from(e)).toList();
-        }
-      } else {
-        // Load from user's categories doc
-        final user = _auth.currentUser;
-        if (user == null) {
-          _subcategories = [];
-        } else {
-          final doc = await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .collection('categories')
-              .doc(widget.categoryId)
-              .get();
-          if (!doc.exists) {
-            _subcategories = [];
-          } else {
-            final data = doc.data();
-            final List subs = (data != null && data['subcategories'] != null)
-                ? data['subcategories']
-                : [];
-            _subcategories =
-                subs.map((e) => Map<String, dynamic>.from(e)).toList();
-          }
+
+        if (userDoc.exists) {
+          final data = userDoc.data();
+          final List subs =
+              (data != null && data['subcategories'] is List) ? data['subcategories'] : [];
+          userSubs = subs.map((e) => Map<String, dynamic>.from(e)).toList();
         }
       }
 
-      // If user-category, append Add (+) tile at the end
-      if (!isGlobalCategory) {
+      // 🔹 3) Merge global + user subcategories (avoid duplicates by id/name)
+      final combined = <Map<String, dynamic>>[];
+      final seen = <String>{};
+
+      for (final s in [...globalSubs, ...userSubs]) {
+        final idKey = (s['id']?.toString().isNotEmpty ?? false)
+            ? s['id'].toString()
+            : (s['name']?.toString() ?? '');
+        if (idKey.isEmpty) continue;
+        if (seen.contains(idKey)) continue;
+        seen.add(idKey);
+        combined.add(s);
+      }
+
+      setState(() {
+        _subcategories = combined;
+        // Always allow adding your own subcategory
         _subcategories.add({'id': '+', 'name': '+'});
-      }
-
-      setState(() => _isLoading = false);
+        _isLoading = false;
+      });
     } catch (e) {
       debugPrint('Error loading subcategories: $e');
       setState(() {
-        _subcategories = isGlobalCategory ? [] : [{'id': '+', 'name': '+'}];
+        _subcategories = [
+          {'id': '+', 'name': '+'}
+        ];
         _isLoading = false;
       });
     }
@@ -109,10 +112,13 @@ class _SubcategoryPageState extends State<SubcategoryPage> {
     if (user == null) return;
 
     try {
+      final parentCollection =
+          widget.forIncome ? 'income_categories' : 'categories';
+
       final catDocRef = _firestore
           .collection('users')
           .doc(user.uid)
-          .collection('categories')
+          .collection(parentCollection)
           .doc(widget.categoryId);
 
       final newSub = {
@@ -138,7 +144,6 @@ class _SubcategoryPageState extends State<SubcategoryPage> {
 
       // Update local list (insert before + tile)
       setState(() {
-        // remove trailing '+' then insert and re-add '+'
         if (_subcategories.isNotEmpty &&
             _subcategories.last['name'] == '+') {
           _subcategories.removeLast();
@@ -171,7 +176,6 @@ class _SubcategoryPageState extends State<SubcategoryPage> {
     return GestureDetector(
       onTap: () {
         if (isAddButton) {
-          // Show popup to add only for user categories
           setState(() => _showPopup = true);
         } else {
           Navigator.pop(context, category);
@@ -236,135 +240,141 @@ class _SubcategoryPageState extends State<SubcategoryPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _subcategories.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No subcategories available for this category',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                )
-              : Stack(
+          : _subcategories.length <= 1 // only '+' present
+              ? Stack(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      child: GridView.builder(
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 18,
-                          mainAxisSpacing: 18,
-                          childAspectRatio: 1.2,
-                        ),
-                        itemCount: _subcategories.length,
-                        itemBuilder: (context, index) {
-                          final subcat = _subcategories[index];
-                          return _buildCategoryCard(context, subcat);
-                        },
+                    const Center(
+                      child: Text(
+                        'No subcategories available for this category',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                     ),
+                    _buildGrid(),
+                  ],
+                )
+              : _buildGrid(),
+    );
+  }
 
-                    // Popup overlay for adding (only shown for user categories)
-                    if (_showPopup)
-                      Container(
-                        color: Colors.black.withOpacity(0.5),
-                        child: Center(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 25),
-                            width: MediaQuery.of(context).size.width * 0.8,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
+  Widget _buildGrid() {
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 18,
+              mainAxisSpacing: 18,
+              childAspectRatio: 1.2,
+            ),
+            itemCount: _subcategories.length,
+            itemBuilder: (context, index) {
+              final subcat = _subcategories[index];
+              return _buildCategoryCard(context, subcat);
+            },
+          ),
+        ),
+
+        // Popup overlay for adding
+        if (_showPopup)
+          Container(
+            color: Colors.black.withOpacity(0.5),
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 25),
+                width: MediaQuery.of(context).size.width * 0.8,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Subcategory Name",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _newSubcategoryController,
+                      decoration: InputDecoration(
+                        hintText: 'Enter Name',
+                        hintStyle: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 15,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                        filled: true,
+                        fillColor: Colors.grey.shade200,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _showPopup = false;
+                              _newSubcategoryController.clear();
+                            });
+                          },
+                          child: const Text(
+                            "Cancel",
+                            style: TextStyle(
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF58CC02),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Subcategory Name",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                TextField(
-                                  controller: _newSubcategoryController,
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter Name',
-                                    hintStyle: const TextStyle(
-                                      color: Colors.black54,
-                                      fontSize: 15,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 14),
-                                    filled: true,
-                                    fillColor: Colors.grey.shade200,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    TextButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _showPopup = false;
-                                          _newSubcategoryController.clear();
-                                        });
-                                      },
-                                      child: const Text(
-                                        "Cancel",
-                                        style: TextStyle(
-                                            color: Colors.grey,
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                            const Color(0xFF58CC02),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        elevation: 0,
-                                      ),
-                                      onPressed: () async {
-                                        final name = _newSubcategoryController.text.trim();
-                                        if (name.isNotEmpty) {
-                                          await _addUserSubcategory(name);
-                                          setState(() {
-                                            _showPopup = false;
-                                            _newSubcategoryController.clear();
-                                          });
-                                        }
-                                      },
-                                      child: const Text(
-                                        "Add",
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              ],
+                            elevation: 0,
+                          ),
+                          onPressed: () async {
+                            final name =
+                                _newSubcategoryController.text.trim();
+                            if (name.isNotEmpty) {
+                              await _addUserSubcategory(name);
+                              setState(() {
+                                _showPopup = false;
+                                _newSubcategoryController.clear();
+                              });
+                            }
+                          },
+                          child: const Text(
+                            "Add",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
-                      ),
+                      ],
+                    )
                   ],
                 ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -1,3 +1,4 @@
+// add_expense_page.dart
 import 'package:first_app/screens/expenses/payment_method_page.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -248,9 +249,10 @@ class _AddExpensePageState extends State<AddExpensePage> {
               label: "Category",
               value: selectedCategoryName,
               onTap: () async {
+                // pass forIncome flag so CategoryPage loads income_categories when needed
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CategoryPage()),
+                  MaterialPageRoute(builder: (context) => CategoryPage(forIncome: !isExpense)),
                 );
 
                 if (result != null && result is Map) {
@@ -284,6 +286,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                     builder: (context) => SubcategoryPage(
                       categoryId: selectedCategoryId!,
                       categoryName: selectedCategoryName,
+                      forIncome: !isExpense, // pass the flag so SubcategoryPage uses income_categories when needed
                     ),
                   ),
                 );

@@ -1,9 +1,12 @@
+// category_page.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class CategoryPage extends StatefulWidget {
-  const CategoryPage({super.key});
+  final bool forIncome; // <-- flag
+
+  const CategoryPage({super.key, this.forIncome = false});
 
   @override
   State<CategoryPage> createState() => _CategoryPageState();
@@ -30,8 +33,12 @@ class _CategoryPageState extends State<CategoryPage> {
     if (user == null) return;
 
     try {
+      // choose collection names based on flag
+      final globalCollectionName = widget.forIncome ? 'income_categories' : 'categories';
+      final userCollectionName = widget.forIncome ? 'income_categories' : 'categories';
+
       // 🔹 Fetch global categories
-      final globalSnap = await _firestore.collection('categories').get();
+      final globalSnap = await _firestore.collection(globalCollectionName).get();
       final globalCategories = globalSnap.docs
           .map((doc) => {'id': doc.id, 'name': doc['name'] as String})
           .toList();
@@ -40,7 +47,7 @@ class _CategoryPageState extends State<CategoryPage> {
       final userSnap = await _firestore
           .collection('users')
           .doc(user.uid)
-          .collection('categories')
+          .collection(userCollectionName)
           .get();
       final userCategories = userSnap.docs
           .map((doc) => {'id': doc.id, 'name': doc['name'] as String})
@@ -73,10 +80,12 @@ class _CategoryPageState extends State<CategoryPage> {
     if (user == null) return;
 
     try {
+      final userCollectionName = widget.forIncome ? 'income_categories' : 'categories';
+
       final catRef = _firestore
           .collection('users')
           .doc(user.uid)
-          .collection('categories')
+          .collection(userCollectionName)
           .doc();
 
       await catRef.set({
