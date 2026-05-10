@@ -6,9 +6,17 @@ import 'category_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:first_app/services/expense_controller.dart';
 import 'subcategory_page.dart';
+import 'package:first_app/services/BudgetAlertCheckerService.dart';
+import 'package:first_app/services/distribution_budget_checker_service.dart';
+import 'package:first_app/services/suggestion_service.dart';
+import 'package:first_app/services/tips/tips_trigger_service.dart';
+import 'package:record/record.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 
 class AddExpensePage extends StatefulWidget {
   const AddExpensePage({super.key});
+  
 
   @override
   State<AddExpensePage> createState() => _AddExpensePageState();
@@ -16,10 +24,15 @@ class AddExpensePage extends StatefulWidget {
 
 class _AddExpensePageState extends State<AddExpensePage> {
   bool isExpense = true;
+  bool isRecording = false;
+  bool isProcessingVoice = false;
+
+  
 
   final amountController = TextEditingController();
   final dateController = TextEditingController();
   final timeController = TextEditingController();
+  final recorder = AudioRecorder();
 
   String? selectedCategoryId;
   String selectedCategoryName = "Select Category";
@@ -43,6 +56,95 @@ class _AddExpensePageState extends State<AddExpensePage> {
     _controller = ExpenseController(uid: uid);
   }
 
+Future<void> startRecording() async {
+  if (await recorder.hasPermission()) {
+
+    final dir = await getTemporaryDirectory();
+
+    final path =
+        '${dir.path}/expense_recording.m4a';
+
+    await recorder.start(
+      const RecordConfig(),
+      path: path,
+    );
+  }
+}
+
+  Future<String?> stopRecording() async {
+    return await recorder.stop();
+  }
+
+  Future<void> uploadAudio(String path) async {
+  try {
+
+    setState(() {
+      isProcessingVoice = true;
+    });
+
+    const baseUrl = "http://192.168.0.101:5000";
+
+    Dio dio = Dio();
+
+    FormData formData = FormData.fromMap({
+      "audio": await MultipartFile.fromFile(path),
+    });
+
+    Response response = await dio.post(
+      "$baseUrl/transcribe",
+      data: formData,
+    );
+
+    final data = response.data;
+
+    print(data);
+
+    amountController.text =
+        data["amount"].toString();
+
+    setState(() {
+      selectedCategoryId =
+          data["category_id"];
+
+      selectedCategoryName =
+        data["category_name"] ??
+        "Select Category";
+
+      selectedSubcategoryId =
+          data["subcategory_id"];
+
+      selectedSubcategoryName =
+        data["subcategory_name"] ??
+        "Select Subcategory";
+
+      selectedPaymentModeId =
+          data["payment_mode_id"];
+
+      selectedPaymentModeName =
+      data["payment_mode_name"] ??
+      "Select Payment Mode";
+    });
+
+  } catch (e) {
+
+    print(e);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Voice processing failed",
+        ),
+      ),
+    );
+
+  } finally {
+
+    setState(() {
+      isProcessingVoice = false;
+    });
+
+  }
+}
   Future<void> _selectDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -81,26 +183,41 @@ class _AddExpensePageState extends State<AddExpensePage> {
     setState(() => _saving = true);
 
     try {
-      final categoryObj = (selectedCategoryId != null && selectedCategoryId!.isNotEmpty)
-          ? {'id': selectedCategoryId, 'name': selectedCategoryName}
-          : (selectedCategoryName != "Select Category" ? selectedCategoryName : null);
-
-      final paymentObj = (selectedPaymentModeId != null && selectedPaymentModeId!.isNotEmpty)
-          ? {'id': selectedPaymentModeId, 'name': selectedPaymentModeName}
-          : (selectedPaymentModeName != "Select Payment Mode" ? selectedPaymentModeName : null);
-
+      final categoryId = selectedCategoryId;  
+      final subcategoryId = selectedSubcategoryId;
+      final paymentModeId = selectedPaymentModeId;
       final docRef = await _controller.saveExpense(
         amountText: amountController.text,
         dateText: dateController.text,
         timeText: timeController.text,
         isExpense: isExpense, // IMPORTANT: controller branches on this flag
-        category: categoryObj,
-        subcategory: (selectedSubcategoryId != null && selectedSubcategoryId!.isNotEmpty)
-            ? {'id': selectedSubcategoryId, 'name': selectedSubcategoryName}
-            : (selectedSubcategoryName != "Select Subcategory" ? selectedSubcategoryName : null),
-        paymentMode: paymentObj,
+        category: selectedCategoryId,
+        subcategory: selectedSubcategoryId,
+        paymentMode: selectedPaymentModeId,
+
         notes: null,
       );
+if (isExpense && selectedCategoryId != null) {
+  await BudgetAlertCheckerService().checkBudgetAfterExpense(
+    categoryId: selectedCategoryId!,
+    categoryName: selectedCategoryName,
+  );
+
+  // await DistributionBudgetCheckerService().checkAfterNewExpense(
+  //   category: selectedCategoryName,
+  //   expenseAmount: double.tryParse(amountController.text) ?? 0,
+  // );
+
+  // 🔔 Trigger tips after successful expense save
+  await TipsTriggerService().onExpenseLogged(
+    FirebaseAuth.instance.currentUser!.uid,
+  );
+}
+
+// 🔁 Refresh suggestions ONCE
+await SuggestionService.instance.refreshAndPush();
+
+      
 
       // success message depends on type
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -323,32 +440,101 @@ class _AddExpensePageState extends State<AddExpensePage> {
 
             const SizedBox(height: 30),
 
-            // Continue Button
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: _onSave,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isExpense ? const Color(0xFF58CC02) : const Color(0xFF1CB0F6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                ),
-                child: _saving
-                    ? const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
-                    : const Text(
-                        "SAVE",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-              ),
+// Save + Mic Row
+Row(
+  children: [
+
+    // SAVE BUTTON
+    Expanded(
+      child: SizedBox(
+        height: 58,
+        child: ElevatedButton(
+          onPressed: _onSave,
+          style: ElevatedButton.styleFrom(
+            backgroundColor:
+                isExpense ? const Color(0xFF58CC02) : const Color(0xFF1CB0F6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
             ),
+            elevation: 0,
+          ),
+          child: _saving
+              ? const CircularProgressIndicator(
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(Colors.white),
+                )
+              : const Text(
+                  "SAVE",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+        ),
+      ),
+    ),
+
+    const SizedBox(width: 14),
+
+    // MIC BUTTON
+    GestureDetector(
+      onTap: () async {
+  if (!isRecording) {
+    await startRecording();
+
+    setState(() {
+      isRecording = true;
+    });
+  } else {
+    String? path = await stopRecording();
+
+    setState(() {
+      isRecording = false;
+    });
+
+    print(path);
+
+    if (path != null) {
+      uploadAudio(path);
+    }
+  }
+},
+      child: Container(
+        height: 58,
+        width: 58,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1CB0F6),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+child: isProcessingVoice
+    ? const SizedBox(
+        height: 24,
+        width: 24,
+        child: CircularProgressIndicator(
+          color: Colors.white,
+          strokeWidth: 2.5,
+        ),
+      )
+    : Icon(
+        isRecording
+            ? Icons.stop_rounded
+            : Icons.mic_rounded,
+        color: Colors.white,
+        size: 30,
+      ),
+      ),
+    ),
+  ],
+),
 
             const SizedBox(height: 40),
           ],

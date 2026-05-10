@@ -248,6 +248,7 @@ Future<void> uploadCareerRulesFromString() async {
     "tags": ["freelancer","business","mindset"],
     "active": true
   },
+
   {
     "id": "c_freelancer_02",
     "role": "Freelancer",
@@ -294,6 +295,7 @@ Future<void> uploadCareerRulesFromString() async {
     "tags": ["homemaker","tracking","household"],
     "active": true
   },
+  
   {
     "id": "c_homemaker_02",
     "role": "Homemaker",
@@ -386,6 +388,7 @@ Future<void> uploadCareerRulesFromString() async {
     "tags": ["other","tracking"],
     "active": true
   },
+  
   {
     "id": "c_other_02",
     "role": "Other",
@@ -395,6 +398,7 @@ Future<void> uploadCareerRulesFromString() async {
     "tags": ["other","goal"],
     "active": true
   },
+
   {
     "id": "c_other_03",
     "role": "Other",

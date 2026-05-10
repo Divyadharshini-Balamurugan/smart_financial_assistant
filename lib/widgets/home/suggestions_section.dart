@@ -1,3 +1,4 @@
+// lib/widgets/suggestions_section.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '/services/suggestion_service.dart';
@@ -12,50 +13,78 @@ class SuggestionsSection extends StatefulWidget {
 class _SuggestionsSectionState extends State<SuggestionsSection> {
   List<String> _advices = [];
   int _currentIndex = 0;
-  Timer? _timer;
+  Timer? _rotator;
+  StreamSubscription<List<String>>? _sub;
 
-  final SuggestionService _suggestionService = SuggestionService();
+  // use singleton instance
+  final SuggestionService _suggestionService = SuggestionService.instance;
 
   @override
-void initState() {
-  super.initState();
-  _advices = []; // show loader while checking
-  _initSuggestions();
-}
+  void initState() {
+    super.initState();
+    _advices = []; // show loader while checking
+    _loadInitialAndSubscribe();
+    _startRotator();
+  }
 
-Future<void> _initSuggestions() async {
-  // 1) read cache or generate (this method returns stored instantly if exists)
-  final suggestions = await _suggestionService.fetchOrGenerate();
-  setState(() {
-    _advices = suggestions.isNotEmpty
+  Future<void> _loadInitialAndSubscribe() async {
+    try {
+      // 1) initial cached or generated suggestions (fast return)
+      final suggestions = await _suggestionService.fetchOrGenerate();
+      if (!mounted) return;
+      setState(() {
+        _applyNewSuggestions(suggestions);
+      });
+    } catch (e) {
+      // ignore and rely on stream if it arrives later
+      print('⚠️ Suggestions initial load failed: $e');
+    }
+
+    // 2) subscribe to push updates
+    _sub = _suggestionService.suggestionsStream.listen((latest) {
+      if (!mounted) return;
+      setState(() {
+        _applyNewSuggestions(latest);
+      });
+    }, onError: (e) {
+      print('⚠️ suggestions stream error: $e');
+    });
+  }
+
+  void _applyNewSuggestions(List<String> suggestions) {
+    _advices = (suggestions.isNotEmpty)
         ? suggestions
         : ['No suggestions available. Update profile or expenses.'];
-  });
+    if (_currentIndex >= _advices.length) _currentIndex = 0;
+  }
 
-  // 2) start timer after advices loaded
-  _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
-    if (_advices.isNotEmpty) {
-      setState(() {
-        _currentIndex = (_currentIndex + 1) % _advices.length;
-      });
-    }
-  });
-}
-
+  void _startRotator() {
+    _rotator?.cancel();
+    _rotator = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (_advices.isNotEmpty && mounted) {
+        setState(() {
+          _currentIndex = (_currentIndex + 1) % _advices.length;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _rotator?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
 
   void _nextAdvice() {
+    if (_advices.isEmpty) return;
     setState(() {
       _currentIndex = (_currentIndex + 1) % _advices.length;
     });
   }
 
   void _prevAdvice() {
+    if (_advices.isEmpty) return;
     setState(() {
       _currentIndex = (_currentIndex - 1 + _advices.length) % _advices.length;
     });
@@ -104,27 +133,29 @@ Future<void> _initSuggestions() async {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                        color: Colors.grey),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.grey),
                     onPressed: _prevAdvice,
                   ),
                   Expanded(
                     child: Center(
-                      child: Text(
-                        _advices[_currentIndex],
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          _advices[_currentIndex],
+                          key: ValueKey(_advices[_currentIndex]),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios_rounded,
-                        color: Colors.grey),
+                    icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey),
                     onPressed: _nextAdvice,
                   ),
                 ],

@@ -2,16 +2,6 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Updated BudgetAlertService
-/// - Provides add/update/delete alert helpers
-/// - Calculates spent for the exact period (Day/Week/Month/Year) tied to an alert
-/// - Reuses Firestore schema conventions used in your app (categoryName/categoryId/amount/frequency/startDate)
-///
-/// Usage examples:
-/// final svc = BudgetAlertService();
-/// final result = await svc.calculateSpentForAlert(alertId: "abc", period: 'Week', date: DateTime.now());
-/// result['total'] -> double, result['transactions'] -> List<Map<String, dynamic>>
-
 class BudgetAlertService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -200,9 +190,9 @@ class BudgetAlertService {
     double total = 0.0;
     final List<Map<String, dynamic>> tx = [];
 for (final d in snap.docs) {
-  final m = d.data() as Map<String, dynamic>?;   // FIX #1 — safe cast
+  final m = d.data() as Map<String, dynamic>?;   
 
-  if (m == null) continue;                       // FIX #2 — avoid null crash
+  if (m == null) continue;                       
 
   double amt = 0.0;
 

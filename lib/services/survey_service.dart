@@ -45,42 +45,40 @@ class SurveyService {
   //
   // So every question always saves to the same document.
   // ---------------------------------------------------------------------------
-  Future<void> saveAnswer({
-    required String questionId,
-    required String question,
-    required int selectedIndex,
-    required String selectedValue,
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+Future<void> saveAnswer({
+  required String questionId,
+  required String question,
+  int? selectedIndex,
+  String? selectedValue,
+  List<String>? selectedValues, // <-- For multi-select (Q3)
+}) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-    final ref = _db
-        .collection('users')
-        .doc(user.uid)
-        .collection('surveyResponses')
-        .doc(questionId); // <-- using questionId as documentId
+  final ref = _db
+      .collection('users')
+      .doc(user.uid)
+      .collection('surveyResponses')
+      .doc(questionId);
 
-    await ref.set({
-      'questionId': questionId,
-      'question': question,
-      'selectedIndex': selectedIndex,
-      'selectedValue': selectedValue,
-      'timestamp': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true)); // merge to avoid overwrite issues
+  final Map<String, dynamic> data = {
+    'questionId': questionId,
+    'question': question,
+    'timestamp': FieldValue.serverTimestamp(),
+  };
+
+  if (selectedValues != null && selectedValues.isNotEmpty) {
+    // Multi-select format (Monthly Obligations)
+    data['selectedValues'] = selectedValues;
+  } else {
+    // Normal single-select format
+    data['selectedIndex'] = selectedIndex;
+    data['selectedValue'] = selectedValue;
   }
 
-  Future<void> saveFullSurvey(String uid, Map<String, dynamic> payload) async {
-    final ref = _db
-        .collection('users')
-        .doc(uid)
-        .collection('surveyResponses')
-        .doc("full_survey");
+  await ref.set(data, SetOptions(merge: true)); // Prevent overwrite
+}
 
-    await ref.set({
-      'answers': payload,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-  }
 
   // ---------------------------------------------------------------------------
   // STEP 3: Mark survey completed in user root doc

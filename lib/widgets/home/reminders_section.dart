@@ -83,7 +83,7 @@ class _RemindersSectionState extends State<RemindersSection> {
       );
 
       final double totalSpent = spentResult['total'] ?? 0.0;
-      final double limit = spentResult['limit'] ?? 0.0;
+      final double limit = spentResult['amount'] ?? 0.0;
 
       // Add to reminders if spent >= 70% of limit
       if (totalSpent >= 0.7 * limit) {
